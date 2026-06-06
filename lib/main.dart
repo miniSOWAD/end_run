@@ -23,6 +23,26 @@ void main() async {
   runApp(const EndRunApp());
 }
 
+const String kGameFontFamily = 'monospace';
+
+TextStyle gameTextStyle({
+  required Color color,
+  required double fontSize,
+  FontWeight fontWeight = FontWeight.w800,
+  double letterSpacing = .8,
+  double? height,
+}) {
+  return TextStyle(
+    color: color,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    letterSpacing: letterSpacing,
+    height: height,
+    fontFamily: kGameFontFamily,
+    fontFamilyFallback: const ['Roboto', 'Arial'],
+  );
+}
+
 enum AppScreen { cover, mainMenu, playing, paused, help, scoreboard }
 
 class EndRunApp extends StatefulWidget {
@@ -84,6 +104,11 @@ class _EndRunAppState extends State<EndRunApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        fontFamily: kGameFontFamily,
+        textTheme: Typography.whiteMountainView.apply(fontFamily: kGameFontFamily),
+        useMaterial3: true,
+      ),
       home: Scaffold(
         body: Stack(
           children: [
@@ -154,6 +179,7 @@ class CoverScreen extends StatelessWidget {
                 fontSize: 58,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 6,
+                fontFamily: kGameFontFamily,
               ),
             ),
           ),
@@ -220,6 +246,7 @@ class MainMenuScreen extends StatelessWidget {
                           fontSize: 56,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 5,
+                          fontFamily: kGameFontFamily,
                           shadows: [
                             Shadow(color: Colors.cyanAccent, blurRadius: 22),
                           ],
@@ -281,7 +308,7 @@ class MenuButton extends StatelessWidget {
         icon: Icon(icon, size: 24),
         label: Text(
           label,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, fontFamily: kGameFontFamily, letterSpacing: .6),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.black.withOpacity(.62),
@@ -325,6 +352,8 @@ class GameplayHud extends StatelessWidget {
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
+                      fontFamily: kGameFontFamily,
+                      letterSpacing: .8,
                     ),
                   ),
                 );
@@ -385,6 +414,7 @@ class PauseMenuScreen extends StatelessWidget {
                     fontSize: 42,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 3,
+                    fontFamily: kGameFontFamily,
                   ),
                 ),
                 const SizedBox(height: 22),
@@ -555,6 +585,7 @@ class FullscreenPanel extends StatelessWidget {
                             fontSize: 38,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 3,
+                            fontFamily: kGameFontFamily,
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -645,8 +676,15 @@ class CircleMazeGame extends FlameGame
     await super.onLoad();
     _validateLevels();
     _loaded = true;
-    loadLevel(0, resetTimer: true);
     pauseEngine();
+  }
+
+  @override
+  void onGameResize(Vector2 canvasSize) {
+    super.onGameResize(canvasSize);
+    if (_loaded && hasActiveSession && !finishedAllLevels) {
+      loadLevel(currentLevel, resetTimer: false);
+    }
   }
 
   @override
@@ -667,17 +705,30 @@ class CircleMazeGame extends FlameGame
   }
 
   void _calculateMazeScale(MazeLevel level) {
-    final topHudSpace = 72.0;
-    final bottomSpace = 8.0;
-    final availableWidth = size.x;
-    final availableHeight = math.max(120.0, size.y - topHudSpace - bottomSpace);
+    // Responsive Android-first scaling.
+    // The old version used the full width and a fixed 72px top area, which made
+    // the maze overflow or look stacked on phones/tablets with different aspect ratios.
+    final horizontalPadding = size.x < 700 ? 12.0 : 24.0;
+    final topHudSpace = math.min(math.max(size.y * .13, 56.0), 88.0);
+    final bottomPadding = size.y < 430 ? 10.0 : 18.0;
+
+    final availableWidth = math.max(160.0, size.x - horizontalPadding * 2);
+    final availableHeight = math.max(120.0, size.y - topHudSpace - bottomPadding);
+
     tileSize = math.min(
       availableWidth / level.columns,
       availableHeight / level.rows,
     );
+
+    // Slightly smaller on tiny Android screens so borders never touch/crop.
+    if (size.y < 430) tileSize *= .94;
+
+    final mazeWidth = level.columns * tileSize;
+    final mazeHeight = level.rows * tileSize;
+
     mazeOffset = Vector2(
-      (size.x - level.columns * tileSize) / 2,
-      topHudSpace + (availableHeight - level.rows * tileSize) / 2,
+      (size.x - mazeWidth) / 2,
+      topHudSpace + (availableHeight - mazeHeight) / 2,
     );
   }
 
@@ -756,6 +807,8 @@ class CircleMazeGame extends FlameGame
           color: Colors.white,
           fontSize: 22,
           fontWeight: FontWeight.w800,
+          fontFamily: kGameFontFamily,
+          letterSpacing: .4,
         ),
       ),
     );
@@ -770,6 +823,8 @@ class CircleMazeGame extends FlameGame
           color: Colors.white.withOpacity(.76),
           fontSize: 14,
           fontWeight: FontWeight.w500,
+          fontFamily: kGameFontFamily,
+          letterSpacing: .2,
         ),
       ),
     );
