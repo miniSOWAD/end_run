@@ -25,7 +25,7 @@ void main() async {
 
 // Device-safe futuristic fallback. To use a custom font, bundle it in pubspec.yaml
 // and replace this with that font family name.
-const String kGameFontFamily = 'monospace';
+const String kGameFontFamily = 'Orbitron';
 
 TextStyle gameTextStyle({
   required Color color,
