@@ -14,11 +14,12 @@ import 'levels/maze_level.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Cover screen and main menu should open in portrait.
+  // Gameplay switches to landscape only when a level starts/resumes.
   await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.landscapeLeft,
-    DeviceOrientation.landscapeRight,
+    DeviceOrientation.portraitUp,
   ]);
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
 
   runApp(const EndRunApp());
 }
@@ -74,15 +75,41 @@ class _EndRunAppState extends State<EndRunApp> {
     if (mounted) setState(() {});
   }
 
-  void _startNewGame() {
-    game.startNewGame();
-    setState(() => screen = AppScreen.playing);
+  Future<void> _lockPortraitForMenus() async {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
-  void _resumeGame() {
-    if (!game.hasActiveSession) return;
-    game.resumeSession();
+  Future<void> _lockLandscapeForGameplay() async {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  Future<void> _startNewGame() async {
+    await _lockLandscapeForGameplay();
+    if (!mounted) return;
     setState(() => screen = AppScreen.playing);
+
+    // Let Android finish the orientation/layout pass before building the maze.
+    // Without this, the level may calculate size using the old portrait canvas.
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
+    game.startNewGame();
+  }
+
+  Future<void> _resumeGame() async {
+    if (!game.hasActiveSession) return;
+    await _lockLandscapeForGameplay();
+    if (!mounted) return;
+    setState(() => screen = AppScreen.playing);
+    await Future<void>.delayed(const Duration(milliseconds: 120));
+    if (!mounted) return;
+    game.resumeSession();
   }
 
   void _pauseGame() {
@@ -90,8 +117,10 @@ class _EndRunAppState extends State<EndRunApp> {
     setState(() => screen = AppScreen.paused);
   }
 
-  void _returnToMainMenu() {
+  Future<void> _returnToMainMenu() async {
     game.pauseSession();
+    await _lockPortraitForMenus();
+    if (!mounted) return;
     setState(() => screen = AppScreen.mainMenu);
   }
 
@@ -134,8 +163,12 @@ class _EndRunAppState extends State<EndRunApp> {
             if (screen == AppScreen.mainMenu)
               MainMenuScreen(
                 canResume: game.hasActiveSession,
-                onNewGame: _startNewGame,
-                onResume: _resumeGame,
+                onNewGame: () {
+                  _startNewGame();
+                },
+                onResume: () {
+                  _resumeGame();
+                },
                 onHelp: () => setState(() => screen = AppScreen.help),
                 onScoreboard: () => setState(() => screen = AppScreen.scoreboard),
                 onExit: _exitGame,
@@ -143,8 +176,12 @@ class _EndRunAppState extends State<EndRunApp> {
 
             if (screen == AppScreen.paused)
               PauseMenuScreen(
-                onResume: _resumeGame,
-                onMainMenu: _returnToMainMenu,
+                onResume: () {
+                  _resumeGame();
+                },
+                onMainMenu: () {
+                  _returnToMainMenu();
+                },
               ),
 
             if (screen == AppScreen.help)
@@ -221,63 +258,106 @@ class MainMenuScreen extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withOpacity(.74),
-                Colors.black.withOpacity(.36),
-                Colors.black.withOpacity(.74),
+                Colors.black.withOpacity(.35),
+                Colors.black.withOpacity(.18),
+                Colors.black.withOpacity(.62),
               ],
             ),
           ),
           child: SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'END RUN',
-                        textAlign: TextAlign.center,
-                        style: gameTextStyle(
-                          color: Colors.white,
-                          fontSize: 56,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 5,
-                        ).copyWith(shadows: const [
-                          Shadow(color: Colors.cyanAccent, blurRadius: 22),
-                        ]),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Run the circle through graph-designed mazes.',
-                        textAlign: TextAlign.center,
-                        style: gameTextStyle(
-                          color: Colors.white.withOpacity(.78),
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: .2,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxHeight < 700;
+                final veryCompact = constraints.maxHeight < 560;
+                final titleSize = veryCompact ? 34.0 : compact ? 42.0 : 56.0;
+                final buttonHeight = veryCompact ? 44.0 : compact ? 48.0 : 54.0;
+                final buttonGap = veryCompact ? 8.0 : 12.0;
+
+                return SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: veryCompact ? 10 : 22,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: math.max(0.0, constraints.maxHeight - (veryCompact ? 20 : 44)),
+                    ),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 480),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'END RUN',
+                              textAlign: TextAlign.center,
+                              style: gameTextStyle(
+                                color: Colors.white,
+                                fontSize: titleSize,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: veryCompact ? 3 : 5,
+                              ).copyWith(shadows: const [
+                                Shadow(color: Colors.cyanAccent, blurRadius: 22),
+                              ]),
+                            ),
+                            SizedBox(height: veryCompact ? 4 : 6),
+                            Text(
+                              'Run the circle through graph-designed mazes.',
+                              textAlign: TextAlign.center,
+                              style: gameTextStyle(
+                                color: Colors.white.withOpacity(.82),
+                                fontSize: veryCompact ? 12 : 16,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: .2,
+                              ),
+                            ),
+                            SizedBox(height: veryCompact ? 14 : 24),
+                            if (canResume) ...[
+                              MenuButton(
+                                label: 'Resume Game',
+                                icon: Icons.play_arrow_rounded,
+                                height: buttonHeight,
+                                onPressed: onResume,
+                              ),
+                              SizedBox(height: buttonGap),
+                            ],
+                            MenuButton(
+                              label: 'New Game',
+                              icon: Icons.add_circle_outline_rounded,
+                              height: buttonHeight,
+                              onPressed: onNewGame,
+                            ),
+                            SizedBox(height: buttonGap),
+                            MenuButton(
+                              label: 'Help',
+                              icon: Icons.help_outline_rounded,
+                              height: buttonHeight,
+                              onPressed: onHelp,
+                            ),
+                            SizedBox(height: buttonGap),
+                            MenuButton(
+                              label: 'Scoreboard',
+                              icon: Icons.timer_rounded,
+                              height: buttonHeight,
+                              onPressed: onScoreboard,
+                            ),
+                            SizedBox(height: buttonGap),
+                            MenuButton(
+                              label: 'Exit',
+                              icon: Icons.exit_to_app_rounded,
+                              height: buttonHeight,
+                              onPressed: onExit,
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      if (canResume) ...[
-                        MenuButton(label: 'Resume Game', icon: Icons.play_arrow_rounded, onPressed: onResume),
-                        const SizedBox(height: 12),
-                      ],
-                      MenuButton(label: 'New Game', icon: Icons.add_circle_outline_rounded, onPressed: onNewGame),
-                      const SizedBox(height: 12),
-                      MenuButton(label: 'Help', icon: Icons.help_outline_rounded, onPressed: onHelp),
-                      const SizedBox(height: 12),
-                      MenuButton(label: 'Scoreboard', icon: Icons.timer_rounded, onPressed: onScoreboard),
-                      const SizedBox(height: 12),
-                      MenuButton(label: 'Exit', icon: Icons.exit_to_app_rounded, onPressed: onExit),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
@@ -292,23 +372,30 @@ class MenuButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.height = 54,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onPressed;
+  final double height;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 54,
+      height: height,
       child: ElevatedButton.icon(
         onPressed: onPressed,
         icon: Icon(icon, size: 24),
         label: Text(
           label,
-          style: gameTextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
+          overflow: TextOverflow.ellipsis,
+          style: gameTextStyle(
+            color: Colors.white,
+            fontSize: height < 50 ? 15 : 18,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.black.withOpacity(.62),
@@ -742,6 +829,9 @@ class CircleMazeGame extends FlameGame
   double tileSize = 32;
   double levelElapsed = 0;
   Vector2 mazeOffset = Vector2.zero();
+  Rect mazeBounds = Rect.zero;
+  Rect goalBounds = Rect.zero;
+  final List<Rect> activeWallRects = <Rect>[];
   Vector2? _lastCanvasSize;
 
   @override
@@ -790,12 +880,25 @@ class CircleMazeGame extends FlameGame
 
   void _calculateMazeScale(MazeLevel level) {
     final shortSide = math.min(size.x, size.y);
-    final horizontalPadding = shortSide < 520 ? 8.0 : 16.0;
-    final topHudSpace = shortSide < 520 ? 66.0 : 78.0;
-    final bottomControlSpace = shortSide < 520 ? 116.0 : 130.0;
 
-    final availableWidth = math.max(160.0, size.x - horizontalPadding * 2);
-    final availableHeight = math.max(120.0, size.y - topHudSpace - bottomControlSpace);
+    // The previous version reserved too much bottom space for the controls,
+    // so the maze became tiny / zoomed out. Controls are an overlay, so the
+    // board should use almost the full playable height and stay shifted away
+    // from the left-side buttons.
+    final horizontalPadding = shortSide < 430 ? 8.0 : 14.0;
+    final topHudSpace = shortSide < 430 ? 72.0 : shortSide < 560 ? 82.0 : 92.0;
+    final topGapAfterHud = shortSide < 430 ? 12.0 : 16.0;
+    final bottomPadding = shortSide < 430 ? 8.0 : 14.0;
+    final leftControlsSafeSpace = shortSide < 430 ? 178.0 : 230.0;
+
+    final availableWidth = math.max(
+      180.0,
+      size.x - leftControlsSafeSpace - horizontalPadding,
+    );
+    final availableHeight = math.max(
+      140.0,
+      size.y - topHudSpace - topGapAfterHud - bottomPadding,
+    );
 
     tileSize = math.min(
       availableWidth / level.columns,
@@ -805,17 +908,62 @@ class CircleMazeGame extends FlameGame
     final mazeWidth = level.columns * tileSize;
     final mazeHeight = level.rows * tileSize;
 
+    final centeredX = (size.x - mazeWidth) / 2;
+    final minSafeX = shortSide < 430 ? 150.0 : 205.0;
+    final maxSafeX = math.max(horizontalPadding, size.x - horizontalPadding - mazeWidth);
+
     mazeOffset = Vector2(
-      (size.x - mazeWidth) / 2,
-      topHudSpace + (availableHeight - mazeHeight) / 2,
+      centeredX.clamp(horizontalPadding, maxSafeX).toDouble(),
+      topHudSpace + topGapAfterHud + math.max(0.0, (availableHeight - mazeHeight) / 2),
     );
+
+    // If the centered board would sit under the buttons, nudge it right.
+    if (mazeOffset.x < minSafeX && mazeWidth + minSafeX <= size.x - horizontalPadding) {
+      mazeOffset.x = minSafeX;
+    }
+
+    mazeBounds = Rect.fromLTWH(mazeOffset.x, mazeOffset.y, mazeWidth, mazeHeight);
   }
 
-  Vector2 cellToWorld(Vector2 cell) {
-    return mazeOffset + cell * tileSize + Vector2.all(tileSize * .12);
+  Vector2 cellToWorld(Vector2 cell, [double factor = .66]) {
+    // Center the circle/goal inside the graph cell.
+    final inset = (1 - factor) / 2;
+    return mazeOffset + cell * tileSize + Vector2.all(tileSize * inset);
   }
 
   Vector2 cellSize([double factor = 1]) => Vector2.all(tileSize * factor);
+
+  Rect _componentRect(Vector2 position, Vector2 componentSize) {
+    return Rect.fromLTWH(position.x, position.y, componentSize.x, componentSize.y);
+  }
+
+  bool isPlayerPositionFree(Vector2 position, Vector2 playerSize) {
+    final rect = _componentRect(position, playerSize);
+
+    // Player must stay inside the maze board, not merely inside the phone screen.
+    if (rect.left < mazeBounds.left ||
+        rect.top < mazeBounds.top ||
+        rect.right > mazeBounds.right ||
+        rect.bottom > mazeBounds.bottom) {
+      return false;
+    }
+
+    for (final wall in activeWallRects) {
+      if (rect.overlaps(wall)) return false;
+    }
+    return true;
+  }
+
+  Vector2 clampPlayerInsideMaze(Vector2 position, Vector2 playerSize) {
+    return Vector2(
+      position.x.clamp(mazeBounds.left, mazeBounds.right - playerSize.x).toDouble(),
+      position.y.clamp(mazeBounds.top, mazeBounds.bottom - playerSize.y).toDouble(),
+    );
+  }
+
+  bool playerReachedGoal(Vector2 position, Vector2 playerSize) {
+    return _componentRect(position, playerSize).overlaps(goalBounds);
+  }
 
   void startNewGame() {
     hasActiveSession = true;
@@ -854,19 +1002,24 @@ class CircleMazeGame extends FlameGame
 
     final level = levels[currentLevel];
     _calculateMazeScale(level);
+    activeWallRects.clear();
     final generation = _levelGeneration;
 
-    final startPosition = cellToWorld(level.startCell);
-    player = PlayerCircle(startPosition, cellSize(.76), generation);
+    final playerFactor = .66;
+    final startPosition = cellToWorld(level.startCell, playerFactor);
+    player = PlayerCircle(startPosition, cellSize(playerFactor), generation);
     layer.add(player);
 
     for (var row = 0; row < level.rows; row++) {
       for (var column = 0; column < level.columns; column++) {
         if (level.isWall(column, row)) {
+          final wallPosition = mazeOffset + Vector2(column * tileSize, row * tileSize);
+          final wallSize = cellSize();
+          activeWallRects.add(Rect.fromLTWH(wallPosition.x, wallPosition.y, wallSize.x, wallSize.y));
           layer.add(
             Wall(
-              mazeOffset + Vector2(column * tileSize, row * tileSize),
-              cellSize(),
+              wallPosition,
+              wallSize,
               generation,
             ),
           );
@@ -874,7 +1027,11 @@ class CircleMazeGame extends FlameGame
       }
     }
 
-    layer.add(Goal(cellToWorld(level.goalCell), cellSize(.76), generation));
+    final goalFactor = .72;
+    final goalPosition = cellToWorld(level.goalCell, goalFactor);
+    final goalSize = cellSize(goalFactor);
+    goalBounds = Rect.fromLTWH(goalPosition.x, goalPosition.y, goalSize.x, goalSize.y);
+    layer.add(Goal(goalPosition, goalSize, generation));
     add(layer);
     onGameStateChanged();
   }
@@ -902,6 +1059,7 @@ class CircleMazeGame extends FlameGame
         clearInput();
         levelLayer?.removeFromParent();
         levelLayer = null;
+        activeWallRects.clear();
         pauseEngine();
       }
       onGameStateChanged();
@@ -1011,11 +1169,41 @@ class PlayerCircle extends PositionComponent
     super.update(dt);
     if (!isActivePlayer || gameRef._isCompletingLevel) return;
 
-    previousPosition = position.clone();
-    position += velocity * speed * dt;
+    if (velocity == Vector2.zero()) return;
 
-    position.x = position.x.clamp(0, gameRef.size.x - size.x);
-    position.y = position.y.clamp(0, gameRef.size.y - size.y);
+    previousPosition = position.clone();
+    final step = velocity * speed * dt;
+
+    // Move on X and Y separately, then test against the graph-wall rectangles.
+    // This prevents tunneling through thin walls and prevents the ball from
+    // escaping outside the maze border.
+    var next = position.clone();
+
+    if (step.x != 0) {
+      final candidate = Vector2(position.x + step.x, position.y);
+      final clamped = gameRef.clampPlayerInsideMaze(candidate, size);
+      if (gameRef.isPlayerPositionFree(clamped, size)) {
+        next.x = clamped.x;
+      } else {
+        velocity.x = 0;
+      }
+    }
+
+    if (step.y != 0) {
+      final candidate = Vector2(next.x, position.y + step.y);
+      final clamped = gameRef.clampPlayerInsideMaze(candidate, size);
+      if (gameRef.isPlayerPositionFree(clamped, size)) {
+        next.y = clamped.y;
+      } else {
+        velocity.y = 0;
+      }
+    }
+
+    position = next;
+
+    if (gameRef.playerReachedGoal(position, size)) {
+      gameRef.completeLevel(generation);
+    }
   }
 
   @override
@@ -1046,10 +1234,6 @@ class PlayerCircle extends PositionComponent
   void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollision(intersectionPoints, other);
     if (!isActivePlayer) return;
-
-    if (other is Wall && other.generation == generation) {
-      position = previousPosition;
-    }
 
     if (other is Goal && other.generation == generation) {
       gameRef.completeLevel(generation);
