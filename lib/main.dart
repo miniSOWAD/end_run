@@ -23,13 +23,15 @@ void main() async {
   runApp(const EndRunApp());
 }
 
+// Device-safe futuristic fallback. To use a custom font, bundle it in pubspec.yaml
+// and replace this with that font family name.
 const String kGameFontFamily = 'monospace';
 
 TextStyle gameTextStyle({
   required Color color,
   required double fontSize,
   FontWeight fontWeight = FontWeight.w800,
-  double letterSpacing = .8,
+  double letterSpacing = .7,
   double? height,
 }) {
   return TextStyle(
@@ -119,7 +121,7 @@ class _EndRunAppState extends State<EndRunApp> {
                 child: Align(
                   alignment: Alignment.bottomLeft,
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(12),
                     child: GameControls(game: game),
                   ),
                 ),
@@ -171,15 +173,14 @@ class CoverScreen extends StatelessWidget {
         child: Image.asset(
           'assets/images/cover.png',
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Center(
+          errorBuilder: (_, __, ___) => Center(
             child: Text(
               'END RUN',
-              style: TextStyle(
+              style: gameTextStyle(
                 color: Colors.white,
                 fontSize: 58,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 6,
-                fontFamily: kGameFontFamily,
               ),
             ),
           ),
@@ -223,9 +224,9 @@ class MainMenuScreen extends StatelessWidget {
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
               colors: [
-                Colors.black.withOpacity(.72),
-                Colors.black.withOpacity(.34),
-                Colors.black.withOpacity(.72),
+                Colors.black.withOpacity(.74),
+                Colors.black.withOpacity(.36),
+                Colors.black.withOpacity(.74),
               ],
             ),
           ),
@@ -238,28 +239,27 @@ class MainMenuScreen extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'END RUN',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: gameTextStyle(
                           color: Colors.white,
                           fontSize: 56,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 5,
-                          fontFamily: kGameFontFamily,
-                          shadows: [
-                            Shadow(color: Colors.cyanAccent, blurRadius: 22),
-                          ],
-                        ),
+                        ).copyWith(shadows: const [
+                          Shadow(color: Colors.cyanAccent, blurRadius: 22),
+                        ]),
                       ),
                       const SizedBox(height: 6),
                       Text(
                         'Run the circle through graph-designed mazes.',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: gameTextStyle(
                           color: Colors.white.withOpacity(.78),
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
+                          letterSpacing: .2,
                         ),
                       ),
                       const SizedBox(height: 24),
@@ -308,7 +308,7 @@ class MenuButton extends StatelessWidget {
         icon: Icon(icon, size: 24),
         label: Text(
           label,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, fontFamily: kGameFontFamily, letterSpacing: .6),
+          style: gameTextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.black.withOpacity(.62),
@@ -331,55 +331,134 @@ class GameplayHud extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Stack(
-        children: [
-          Align(
-            alignment: Alignment.topCenter,
-            child: ValueListenableBuilder<double>(
-              valueListenable: game.levelElapsedNotifier,
-              builder: (_, seconds, __) {
-                return Container(
-                  margin: const EdgeInsets.only(top: 12),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(.58),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withOpacity(.22)),
-                  ),
-                  child: Text(
-                    'Time: ${formatTime(seconds)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      fontFamily: kGameFontFamily,
-                      letterSpacing: .8,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final small = constraints.maxWidth < 720;
+          final level = game.levels[game.currentLevel];
+          return SizedBox(
+            height: small ? 58 : 72,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 10,
+                  top: 6,
+                  width: small ? constraints.maxWidth * .38 : constraints.maxWidth * .42,
+                  child: _HudChip(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Level ${level.number}/10: ${level.name}',
+                            maxLines: 1,
+                            style: gameTextStyle(
+                              color: Colors.white,
+                              fontSize: small ? 14 : 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: .2,
+                            ),
+                          ),
+                        ),
+                        if (!small)
+                          Text(
+                            'Reach the green goal',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: gameTextStyle(
+                              color: Colors.white.withOpacity(.66),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: .1,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                );
-              },
-            ),
-          ),
-          Align(
-            alignment: Alignment.topRight,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: ElevatedButton.icon(
-                onPressed: onPause,
-                icon: const Icon(Icons.pause_rounded),
-                label: const Text('Pause'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black.withOpacity(.58),
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  side: BorderSide(color: Colors.white.withOpacity(.22)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-              ),
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: game.levelElapsedNotifier,
+                    builder: (_, seconds, __) {
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: _HudChip(
+                          child: Text(
+                            formatTime(seconds),
+                            style: gameTextStyle(
+                              color: Colors.white,
+                              fontSize: small ? 15 : 18,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: .6,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                Positioned(
+                  right: 10,
+                  top: 6,
+                  child: SizedBox(
+                    height: small ? 38 : 44,
+                    child: ElevatedButton.icon(
+                      onPressed: onPause,
+                      icon: Icon(Icons.pause_rounded, size: small ? 18 : 22),
+                      label: Text(
+                        'Pause',
+                        style: gameTextStyle(
+                          color: Colors.white,
+                          fontSize: small ? 12 : 15,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: .2,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black.withOpacity(.62),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: EdgeInsets.symmetric(horizontal: small ? 12 : 18),
+                        side: BorderSide(color: Colors.white.withOpacity(.2)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _HudChip extends StatelessWidget {
+  const _HudChip({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(.58),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withOpacity(.20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.cyanAccent.withOpacity(.08),
+            blurRadius: 18,
+            spreadRadius: 1,
           ),
         ],
       ),
+      child: child,
     );
   }
 }
@@ -400,21 +479,20 @@ class PauseMenuScreen extends StatelessWidget {
             width: 380,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.black.withOpacity(.65),
+              color: Colors.black.withOpacity(.68),
               borderRadius: BorderRadius.circular(26),
               border: Border.all(color: Colors.white.withOpacity(.22)),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
+                Text(
                   'PAUSED',
-                  style: TextStyle(
+                  style: gameTextStyle(
                     color: Colors.white,
                     fontSize: 42,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 3,
-                    fontFamily: kGameFontFamily,
                   ),
                 ),
                 const SizedBox(height: 22),
@@ -472,11 +550,12 @@ class HelpLine extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: TextStyle(
+              style: gameTextStyle(
                 color: Colors.white.withOpacity(.86),
                 fontSize: 17,
                 height: 1.35,
                 fontWeight: FontWeight.w600,
+                letterSpacing: .1,
               ),
             ),
           ),
@@ -514,16 +593,12 @@ class ScoreboardScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Level ${index + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 16,
-                    ),
+                    style: gameTextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
                 Text(
                   best == null ? '--:--.--' : formatTime(best),
-                  style: TextStyle(
+                  style: gameTextStyle(
                     color: best == null ? Colors.white54 : Colors.greenAccent,
                     fontWeight: FontWeight.w900,
                     fontSize: 16,
@@ -580,12 +655,11 @@ class FullscreenPanel extends StatelessWidget {
                       children: [
                         Text(
                           title,
-                          style: const TextStyle(
+                          style: gameTextStyle(
                             color: Colors.white,
                             fontSize: 38,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 3,
-                            fontFamily: kGameFontFamily,
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -619,7 +693,7 @@ class GameControls extends StatelessWidget {
         width: 50,
         height: 50,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(.55),
+          color: Colors.black.withOpacity(.58),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white.withOpacity(.28)),
         ),
@@ -658,15 +732,17 @@ class CircleMazeGame extends FlameGame
   final ValueNotifier<double> levelElapsedNotifier = ValueNotifier<double>(0);
 
   late PlayerCircle player;
+  PositionComponent? levelLayer;
   int currentLevel = 0;
+  int _levelGeneration = 0;
   bool finishedAllLevels = false;
   bool hasActiveSession = false;
   bool _loaded = false;
-  TextComponent? titleText;
-  TextComponent? messageText;
+  bool _isCompletingLevel = false;
   double tileSize = 32;
   double levelElapsed = 0;
   Vector2 mazeOffset = Vector2.zero();
+  Vector2? _lastCanvasSize;
 
   @override
   Color backgroundColor() => Colors.black;
@@ -682,15 +758,23 @@ class CircleMazeGame extends FlameGame
   @override
   void onGameResize(Vector2 canvasSize) {
     super.onGameResize(canvasSize);
-    if (_loaded && hasActiveSession && !finishedAllLevels) {
-      loadLevel(currentLevel, resetTimer: false);
+    final last = _lastCanvasSize;
+    _lastCanvasSize = canvasSize.clone();
+
+    if (!_loaded || !hasActiveSession || finishedAllLevels || canvasSize.x <= 0 || canvasSize.y <= 0) {
+      return;
+    }
+
+    if (last == null || (last - canvasSize).length > 2) {
+      // Rebuild once for the new Android screen size. Timer is preserved.
+      loadLevel(currentLevel, resetTimer: false, keepPlayerAtStart: false);
     }
   }
 
   @override
   void update(double dt) {
     super.update(dt);
-    if (hasActiveSession && !finishedAllLevels) {
+    if (hasActiveSession && !finishedAllLevels && !_isCompletingLevel) {
       levelElapsed += dt;
       levelElapsedNotifier.value = levelElapsed;
     }
@@ -705,23 +789,18 @@ class CircleMazeGame extends FlameGame
   }
 
   void _calculateMazeScale(MazeLevel level) {
-    // Responsive Android-first scaling.
-    // The old version used the full width and a fixed 72px top area, which made
-    // the maze overflow or look stacked on phones/tablets with different aspect ratios.
-    final horizontalPadding = size.x < 700 ? 12.0 : 24.0;
-    final topHudSpace = math.min(math.max(size.y * .13, 56.0), 88.0);
-    final bottomPadding = size.y < 430 ? 10.0 : 18.0;
+    final shortSide = math.min(size.x, size.y);
+    final horizontalPadding = shortSide < 520 ? 8.0 : 16.0;
+    final topHudSpace = shortSide < 520 ? 66.0 : 78.0;
+    final bottomControlSpace = shortSide < 520 ? 116.0 : 130.0;
 
     final availableWidth = math.max(160.0, size.x - horizontalPadding * 2);
-    final availableHeight = math.max(120.0, size.y - topHudSpace - bottomPadding);
+    final availableHeight = math.max(120.0, size.y - topHudSpace - bottomControlSpace);
 
     tileSize = math.min(
       availableWidth / level.columns,
       availableHeight / level.rows,
     );
-
-    // Slightly smaller on tiny Android screens so borders never touch/crop.
-    if (size.y < 430) tileSize *= .94;
 
     final mazeWidth = level.columns * tileSize;
     final mazeHeight = level.rows * tileSize;
@@ -759,18 +838,14 @@ class CircleMazeGame extends FlameGame
     onGameStateChanged();
   }
 
-  void loadLevel(int index, {bool resetTimer = true}) {
-    finishedAllLevels = false;
+  void loadLevel(int index, {bool resetTimer = true, bool keepPlayerAtStart = true}) {
+    _isCompletingLevel = false;
     currentLevel = index.clamp(0, levels.length - 1);
+    _levelGeneration++;
 
-    final oldLevelComponents = children
-        .where((component) =>
-            component is PlayerCircle ||
-            component is Wall ||
-            component is Goal ||
-            component is TextComponent)
-        .toList();
-    removeAll(oldLevelComponents);
+    levelLayer?.removeFromParent();
+    final layer = PositionComponent(priority: 1);
+    levelLayer = layer;
 
     if (resetTimer) {
       levelElapsed = 0;
@@ -779,78 +854,58 @@ class CircleMazeGame extends FlameGame
 
     final level = levels[currentLevel];
     _calculateMazeScale(level);
+    final generation = _levelGeneration;
 
-    player = PlayerCircle(cellToWorld(level.startCell), cellSize(.76));
-    add(player);
+    final startPosition = cellToWorld(level.startCell);
+    player = PlayerCircle(startPosition, cellSize(.76), generation);
+    layer.add(player);
 
     for (var row = 0; row < level.rows; row++) {
       for (var column = 0; column < level.columns; column++) {
         if (level.isWall(column, row)) {
-          add(
+          layer.add(
             Wall(
               mazeOffset + Vector2(column * tileSize, row * tileSize),
               cellSize(),
+              generation,
             ),
           );
         }
       }
     }
 
-    add(Goal(cellToWorld(level.goalCell), cellSize(.76)));
-
-    titleText = TextComponent(
-      text: 'Level ${level.number}/10: ${level.name}',
-      position: Vector2(18, 16),
-      priority: 20,
-      textRenderer: TextPaint(
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 22,
-          fontWeight: FontWeight.w800,
-          fontFamily: kGameFontFamily,
-          letterSpacing: .4,
-        ),
-      ),
-    );
-    add(titleText!);
-
-    messageText = TextComponent(
-      text: 'Reach the green goal. This maze has at least one graph path.',
-      position: Vector2(18, 46),
-      priority: 20,
-      textRenderer: TextPaint(
-        style: TextStyle(
-          color: Colors.white.withOpacity(.76),
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-          fontFamily: kGameFontFamily,
-          letterSpacing: .2,
-        ),
-      ),
-    );
-    add(messageText!);
+    layer.add(Goal(cellToWorld(level.goalCell), cellSize(.76), generation));
+    add(layer);
+    onGameStateChanged();
   }
 
-  void completeLevel() {
-    if (finishedAllLevels || !hasActiveSession) return;
+  void completeLevel(int generation) {
+    if (generation != _levelGeneration || _isCompletingLevel || finishedAllLevels || !hasActiveSession) return;
+
+    _isCompletingLevel = true;
+    clearInput();
 
     final oldBest = bestTimes[currentLevel];
     if (oldBest == null || levelElapsed < oldBest) {
       bestTimes[currentLevel] = levelElapsed;
     }
 
-    if (currentLevel < levels.length - 1) {
-      loadLevel(currentLevel + 1, resetTimer: true);
-    } else {
-      finishedAllLevels = true;
-      hasActiveSession = false;
-      clearInput();
-      player.velocity = Vector2.zero();
-      messageText?.text = 'You completed all 10 levels! Open Scoreboard from the menu.';
-      pauseEngine();
-    }
+    async.Timer(const Duration(milliseconds: 80), () {
+      if (generation != _levelGeneration || !hasActiveSession) return;
 
-    onGameStateChanged();
+      if (currentLevel < levels.length - 1) {
+        loadLevel(currentLevel + 1, resetTimer: true);
+        resumeEngine();
+      } else {
+        finishedAllLevels = true;
+        hasActiveSession = false;
+        clearInput();
+        levelLayer?.removeFromParent();
+        levelLayer = null;
+        pauseEngine();
+      }
+      onGameStateChanged();
+    });
   }
 
   void restartCurrentLevel() {
@@ -865,13 +920,15 @@ class CircleMazeGame extends FlameGame
   }
 
   void setInput(Vector2 direction) {
-    if (hasActiveSession && !finishedAllLevels) {
+    if (hasActiveSession && !finishedAllLevels && !_isCompletingLevel) {
       player.velocity = direction;
     }
   }
 
   void clearInput() {
-    if (_loaded) player.velocity = Vector2.zero();
+    if (_loaded && hasActiveSession && levelLayer != null) {
+      player.velocity = Vector2.zero();
+    }
   }
 
   @override
@@ -887,24 +944,26 @@ class CircleMazeGame extends FlameGame
 
     canvas.drawRect(rect, paint);
 
-    final gridPaint = Paint()
-      ..color = Colors.white.withOpacity(.045)
-      ..strokeWidth = 1;
-    for (var column = 0; column <= level.columns; column++) {
-      final x = mazeOffset.x + column * tileSize;
-      canvas.drawLine(
-        Offset(x, mazeOffset.y),
-        Offset(x, mazeOffset.y + level.rows * tileSize),
-        gridPaint,
-      );
-    }
-    for (var row = 0; row <= level.rows; row++) {
-      final y = mazeOffset.y + row * tileSize;
-      canvas.drawLine(
-        Offset(mazeOffset.x, y),
-        Offset(mazeOffset.x + level.columns * tileSize, y),
-        gridPaint,
-      );
+    if (hasActiveSession && levelLayer != null) {
+      final gridPaint = Paint()
+        ..color = Colors.white.withOpacity(.035)
+        ..strokeWidth = 1;
+      for (var column = 0; column <= level.columns; column++) {
+        final x = mazeOffset.x + column * tileSize;
+        canvas.drawLine(
+          Offset(x, mazeOffset.y),
+          Offset(x, mazeOffset.y + level.rows * tileSize),
+          gridPaint,
+        );
+      }
+      for (var row = 0; row <= level.rows; row++) {
+        final y = mazeOffset.y + row * tileSize;
+        canvas.drawLine(
+          Offset(mazeOffset.x, y),
+          Offset(mazeOffset.x + level.columns * tileSize, y),
+          gridPaint,
+        );
+      }
     }
 
     super.render(canvas);
@@ -914,16 +973,19 @@ class CircleMazeGame extends FlameGame
 class PlayerCircle extends PositionComponent
     with KeyboardHandler, CollisionCallbacks, HasGameRef<CircleMazeGame> {
   static const double speed = 230.0;
+  final int generation;
   Vector2 velocity = Vector2.zero();
   late Vector2 previousPosition;
 
-  PlayerCircle(Vector2 startPosition, Vector2 playerSize) {
+  PlayerCircle(Vector2 startPosition, Vector2 playerSize, this.generation) {
     size = playerSize;
     position = startPosition;
     previousPosition = startPosition.clone();
     priority = 10;
     add(CircleHitbox());
   }
+
+  bool get isActivePlayer => gameRef.player == this && generation == gameRef._levelGeneration;
 
   @override
   void render(Canvas canvas) {
@@ -947,6 +1009,8 @@ class PlayerCircle extends PositionComponent
   @override
   void update(double dt) {
     super.update(dt);
+    if (!isActivePlayer || gameRef._isCompletingLevel) return;
+
     previousPosition = position.clone();
     position += velocity * speed * dt;
 
@@ -956,7 +1020,7 @@ class PlayerCircle extends PositionComponent
 
   @override
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
-    if (!gameRef.hasActiveSession || gameRef.finishedAllLevels) return true;
+    if (!isActivePlayer || !gameRef.hasActiveSession || gameRef.finishedAllLevels) return true;
 
     final nextVelocity = Vector2.zero();
 
@@ -981,35 +1045,38 @@ class PlayerCircle extends PositionComponent
   @override
   void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
     super.onCollision(intersectionPoints, other);
+    if (!isActivePlayer) return;
 
-    if (other is Wall) {
+    if (other is Wall && other.generation == generation) {
       position = previousPosition;
     }
 
-    if (other is Goal) {
-      gameRef.completeLevel();
+    if (other is Goal && other.generation == generation) {
+      gameRef.completeLevel(generation);
     }
   }
 }
 
 class Wall extends PositionComponent {
-  Wall(Vector2 pos, Vector2 wallSize) {
+  Wall(Vector2 pos, Vector2 wallSize, this.generation) {
     position = pos;
     size = wallSize;
     priority = 5;
     add(RectangleHitbox());
   }
 
+  final int generation;
+
   @override
   void render(Canvas canvas) {
     super.render(canvas);
 
-    final rect = RRect.fromRectAndRadius(size.toRect(), const Radius.circular(5));
+    final rect = RRect.fromRectAndRadius(size.toRect(), Radius.circular(size.x * .18));
     final paint = Paint()..color = Colors.white.withOpacity(.22);
     final border = Paint()
-      ..color = Colors.white.withOpacity(.38)
+      ..color = Colors.white.withOpacity(.42)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..strokeWidth = math.max(1.0, size.x * .055);
 
     canvas.drawRRect(rect, paint);
     canvas.drawRRect(rect, border);
@@ -1017,12 +1084,14 @@ class Wall extends PositionComponent {
 }
 
 class Goal extends PositionComponent {
-  Goal(Vector2 pos, Vector2 goalSize) {
+  Goal(Vector2 pos, Vector2 goalSize, this.generation) {
     position = pos;
     size = goalSize;
     priority = 6;
     add(RectangleHitbox());
   }
+
+  final int generation;
 
   @override
   void render(Canvas canvas) {
@@ -1034,7 +1103,7 @@ class Goal extends PositionComponent {
     final border = Paint()
       ..color = Colors.white.withOpacity(.8)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
+      ..strokeWidth = math.max(2.0, size.x * .08);
 
     canvas.drawCircle(Offset(size.x / 2, size.y / 2), size.x * .65, glow);
     canvas.drawRRect(rect, fill);
