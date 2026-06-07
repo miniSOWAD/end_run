@@ -848,17 +848,13 @@ class CircleMazeGame extends FlameGame
   @override
   void onGameResize(Vector2 canvasSize) {
     super.onGameResize(canvasSize);
-    final last = _lastCanvasSize;
     _lastCanvasSize = canvasSize.clone();
 
-    if (!_loaded || !hasActiveSession || finishedAllLevels || canvasSize.x <= 0 || canvasSize.y <= 0) {
-      return;
-    }
-
-    if (last == null || (last - canvasSize).length > 2) {
-      // Rebuild once for the new Android screen size. Timer is preserved.
-      loadLevel(currentLevel, resetTimer: false, keepPlayerAtStart: false);
-    }
+    // Do NOT rebuild the level from here.
+    // Android fires multiple resize/layout events during orientation changes.
+    // Rebuilding here was the reason old maps/players stayed in the background.
+    // Levels are now built only from startNewGame(), resumeSession(), restartCurrentLevel(),
+    // and completeLevel().
   }
 
   @override
@@ -881,48 +877,56 @@ class CircleMazeGame extends FlameGame
   void _calculateMazeScale(MazeLevel level) {
     final shortSide = math.min(size.x, size.y);
 
-    // The previous version reserved too much bottom space for the controls,
-    // so the maze became tiny / zoomed out. Controls are an overlay, so the
-    // board should use almost the full playable height and stay shifted away
-    // from the left-side buttons.
+    // Bigger board: controls are overlay buttons, so do not reserve half the
+    // screen for them. Keep only a small left safety gap on short Android screens.
     final horizontalPadding = shortSide < 430 ? 8.0 : 14.0;
-    final topHudSpace = shortSide < 430 ? 72.0 : shortSide < 560 ? 82.0 : 92.0;
-    final topGapAfterHud = shortSide < 430 ? 12.0 : 16.0;
-    final bottomPadding = shortSide < 430 ? 8.0 : 14.0;
-    final leftControlsSafeSpace = shortSide < 430 ? 178.0 : 230.0;
+    final topHudSpace = shortSide < 430 ? 78.0 : 88.0;
+    final topGapAfterHud = shortSide < 430 ? 18.0 : 22.0;
+    final bottomPadding = shortSide < 430 ? 8.0 : 12.0;
+    final leftControlsSafeSpace = shortSide < 430 ? 126.0 : 150.0;
 
-    final availableWidth = math.max(
-      180.0,
-      size.x - leftControlsSafeSpace - horizontalPadding,
-    );
-    final availableHeight = math.max(
-      140.0,
-      size.y - topHudSpace - topGapAfterHud - bottomPadding,
-    );
+    final availableWidth = math.max(220.0, size.x - leftControlsSafeSpace - horizontalPadding * 2);
+    final availableHeight = math.max(180.0, size.y - topHudSpace - topGapAfterHud - bottomPadding);
 
     tileSize = math.min(
       availableWidth / level.columns,
       availableHeight / level.rows,
     );
 
+    // Prevent the board from looking too tiny on wide landscape screens.
+    tileSize = tileSize.clamp(14.0, shortSide < 430 ? 34.0 : 42.0).toDouble();
+
     final mazeWidth = level.columns * tileSize;
     final mazeHeight = level.rows * tileSize;
 
+    final minX = horizontalPadding + leftControlsSafeSpace;
     final centeredX = (size.x - mazeWidth) / 2;
-    final minSafeX = shortSide < 430 ? 150.0 : 205.0;
-    final maxSafeX = math.max(horizontalPadding, size.x - horizontalPadding - mazeWidth);
+    final maxX = math.max(horizontalPadding, size.x - horizontalPadding - mazeWidth);
 
     mazeOffset = Vector2(
-      centeredX.clamp(horizontalPadding, maxSafeX).toDouble(),
+      centeredX.clamp(minX <= maxX ? minX : horizontalPadding, maxX).toDouble(),
       topHudSpace + topGapAfterHud + math.max(0.0, (availableHeight - mazeHeight) / 2),
     );
 
-    // If the centered board would sit under the buttons, nudge it right.
-    if (mazeOffset.x < minSafeX && mazeWidth + minSafeX <= size.x - horizontalPadding) {
-      mazeOffset.x = minSafeX;
+    mazeBounds = Rect.fromLTWH(mazeOffset.x, mazeOffset.y, mazeWidth, mazeHeight);
+  }
+
+  bool isWalkableCell(Vector2 cell) {
+    final column = cell.x.round();
+    final row = cell.y.round();
+    final level = levels[currentLevel];
+
+    if (column < 0 || row < 0 || column >= level.columns || row >= level.rows) {
+      return false;
     }
 
-    mazeBounds = Rect.fromLTWH(mazeOffset.x, mazeOffset.y, mazeWidth, mazeHeight);
+    return !level.isWall(column, row);
+  }
+
+  bool isGoalCell(Vector2 cell) {
+    final level = levels[currentLevel];
+    return cell.x.round() == level.goalCell.x.round() &&
+        cell.y.round() == level.goalCell.y.round();
   }
 
   Vector2 cellToWorld(Vector2 cell, [double factor = .66]) {
@@ -1007,7 +1011,12 @@ class CircleMazeGame extends FlameGame
 
     final playerFactor = .66;
     final startPosition = cellToWorld(level.startCell, playerFactor);
-    player = PlayerCircle(startPosition, cellSize(playerFactor), generation);
+    player = PlayerCircle(
+      startPosition,
+      cellSize(playerFactor),
+      generation,
+      level.startCell.clone(),
+    );
     layer.add(player);
 
     for (var row = 0; row < level.rows; row++) {
@@ -1079,13 +1088,13 @@ class CircleMazeGame extends FlameGame
 
   void setInput(Vector2 direction) {
     if (hasActiveSession && !finishedAllLevels && !_isCompletingLevel) {
-      player.velocity = direction;
+      player.setDirection(direction);
     }
   }
 
   void clearInput() {
     if (_loaded && hasActiveSession && levelLayer != null) {
-      player.velocity = Vector2.zero();
+      player.setDirection(Vector2.zero());
     }
   }
 
@@ -1128,22 +1137,52 @@ class CircleMazeGame extends FlameGame
   }
 }
 
-class PlayerCircle extends PositionComponent
-    with KeyboardHandler, CollisionCallbacks, HasGameRef<CircleMazeGame> {
-  static const double speed = 230.0;
-  final int generation;
-  Vector2 velocity = Vector2.zero();
-  late Vector2 previousPosition;
+class PlayerCircle extends PositionComponent with KeyboardHandler, HasGameRef<CircleMazeGame> {
+  static const double speed = 260.0;
 
-  PlayerCircle(Vector2 startPosition, Vector2 playerSize, this.generation) {
+  final int generation;
+  Vector2 currentCell;
+  Vector2 targetCell;
+  Vector2 inputDirection = Vector2.zero();
+  bool isMoving = false;
+
+  PlayerCircle(
+    Vector2 startPosition,
+    Vector2 playerSize,
+    this.generation,
+    this.currentCell,
+  ) : targetCell = currentCell.clone() {
     size = playerSize;
     position = startPosition;
-    previousPosition = startPosition.clone();
     priority = 10;
-    add(CircleHitbox());
   }
 
   bool get isActivePlayer => gameRef.player == this && generation == gameRef._levelGeneration;
+
+  void setDirection(Vector2 direction) {
+    inputDirection = direction.clone();
+
+    // Start immediately when the player taps a button.
+    if (!isMoving) {
+      _tryStartNextCellMove();
+    }
+  }
+
+  void _tryStartNextCellMove() {
+    if (!isActivePlayer || inputDirection == Vector2.zero()) return;
+
+    final nextCell = currentCell + inputDirection;
+
+    if (!gameRef.isWalkableCell(nextCell)) {
+      // Do not destroy the input direction here. If the player is holding
+      // a button against a wall, the ball should simply wait. Changing to
+      // another button should work instantly.
+      return;
+    }
+
+    targetCell = nextCell;
+    isMoving = true;
+  }
 
   @override
   void render(Canvas canvas) {
@@ -1169,40 +1208,30 @@ class PlayerCircle extends PositionComponent
     super.update(dt);
     if (!isActivePlayer || gameRef._isCompletingLevel) return;
 
-    if (velocity == Vector2.zero()) return;
-
-    previousPosition = position.clone();
-    final step = velocity * speed * dt;
-
-    // Move on X and Y separately, then test against the graph-wall rectangles.
-    // This prevents tunneling through thin walls and prevents the ball from
-    // escaping outside the maze border.
-    var next = position.clone();
-
-    if (step.x != 0) {
-      final candidate = Vector2(position.x + step.x, position.y);
-      final clamped = gameRef.clampPlayerInsideMaze(candidate, size);
-      if (gameRef.isPlayerPositionFree(clamped, size)) {
-        next.x = clamped.x;
-      } else {
-        velocity.x = 0;
-      }
+    if (!isMoving) {
+      _tryStartNextCellMove();
+      return;
     }
 
-    if (step.y != 0) {
-      final candidate = Vector2(next.x, position.y + step.y);
-      final clamped = gameRef.clampPlayerInsideMaze(candidate, size);
-      if (gameRef.isPlayerPositionFree(clamped, size)) {
-        next.y = clamped.y;
-      } else {
-        velocity.y = 0;
+    final targetPosition = gameRef.cellToWorld(targetCell, .66);
+    final delta = targetPosition - position;
+    final distance = delta.length;
+    final maxStep = speed * dt;
+
+    if (distance <= maxStep) {
+      position = targetPosition;
+      currentCell = targetCell.clone();
+      isMoving = false;
+
+      if (gameRef.isGoalCell(currentCell)) {
+        gameRef.completeLevel(generation);
+        return;
       }
-    }
 
-    position = next;
-
-    if (gameRef.playerReachedGoal(position, size)) {
-      gameRef.completeLevel(generation);
+      // Continue running while the user keeps holding a direction button.
+      _tryStartNextCellMove();
+    } else {
+      position += delta.normalized() * maxStep;
     }
   }
 
@@ -1210,34 +1239,24 @@ class PlayerCircle extends PositionComponent
   bool onKeyEvent(KeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
     if (!isActivePlayer || !gameRef.hasActiveSession || gameRef.finishedAllLevels) return true;
 
-    final nextVelocity = Vector2.zero();
+    final nextDirection = Vector2.zero();
 
     if (keysPressed.contains(LogicalKeyboardKey.arrowUp) ||
         keysPressed.contains(LogicalKeyboardKey.keyW)) {
-      nextVelocity.y = -1;
+      nextDirection.y = -1;
     } else if (keysPressed.contains(LogicalKeyboardKey.arrowDown) ||
         keysPressed.contains(LogicalKeyboardKey.keyS)) {
-      nextVelocity.y = 1;
+      nextDirection.y = 1;
     } else if (keysPressed.contains(LogicalKeyboardKey.arrowLeft) ||
         keysPressed.contains(LogicalKeyboardKey.keyA)) {
-      nextVelocity.x = -1;
+      nextDirection.x = -1;
     } else if (keysPressed.contains(LogicalKeyboardKey.arrowRight) ||
         keysPressed.contains(LogicalKeyboardKey.keyD)) {
-      nextVelocity.x = 1;
+      nextDirection.x = 1;
     }
 
-    velocity = nextVelocity;
+    setDirection(nextDirection);
     return true;
-  }
-
-  @override
-  void onCollision(Set<Vector2> intersectionPoints, PositionComponent other) {
-    super.onCollision(intersectionPoints, other);
-    if (!isActivePlayer) return;
-
-    if (other is Goal && other.generation == generation) {
-      gameRef.completeLevel(generation);
-    }
   }
 }
 
